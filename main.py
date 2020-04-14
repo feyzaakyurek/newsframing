@@ -1,5 +1,7 @@
-from __future__ import absolute_import, division, print_function
 # coding=utf-8
+# Modification of the original run_glue.py script of Hugging Face's Transformers for 
+# News-Frame detection task. Copyright 2020 of the authors of Multi-label and 
+# Multilingual News Framing Analysis.
 # Copyright 2018 The Google AI Language Team Authors and The HuggingFace Inc. team.
 # Copyright (c) 2018, NVIDIA CORPORATION.  All rights reserved.
 #
@@ -14,8 +16,10 @@ from __future__ import absolute_import, division, print_function
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
+
 print(""" Finetuning the library models for sequence classification on GLUE (Bert, XLM, XLNet, RoBERTa).""")
-print(""" Modification of the original script for News-Frame detection""")
+print(""" Modification of the original run_glue.py script of Hugging Face's Transformers for News-Frame detection task.""")
 
 import argparse
 import glob
@@ -70,6 +74,9 @@ ALL_MODELS = sum((tuple(conf.pretrained_config_archive_map.keys()) for conf in (
 
 losses = {
     "focal": FocalLoss,
+    "focal2": FocalLoss2,
+    "focal3": FocalLoss3,
+    "bce": BCELoss,
     "softmax-focal": SoftmaxFocalLoss,
     "softmax": SoftmaxLoss,
     "softmax-weighted":SoftmaxWeightedLoss,
@@ -87,14 +94,21 @@ class BertForMultiLabelSequenceClassification(BertPreTrainedModel):
         self.classifier = nn.Linear(config.hidden_size, self.config.num_labels)
         self.init_weights()
         self.inverse_normed_freqs = None
+        self.normed_freqs = None
         self.loss = None
+        self.loss_name = None
         
-    # used for weighted focal loss
+    # used for weighted focal loss 1 and 2
     def set_inverse_normed_freqs(self, args, inverse_normed_freqs):
         self.inverse_normed_freqs = inverse_normed_freqs.to(args.device)
+        
+    # used for weighted focal loss 3
+    def set_normed_freqs(self, args, normed_freqs):
+        self.normed_freqs = normed_freqs.to(args.device)
     
     def set_loss(self, loss_name):
         print(loss_name)
+        self.loss_name = loss_name
         self.loss = losses[loss_name]
 
     def forward(self, input_ids, attention_mask=None, token_type_ids=None,
@@ -110,7 +124,12 @@ class BertForMultiLabelSequenceClassification(BertPreTrainedModel):
         outputs = (logits,) + outputs[2:]  # add hidden states and attention if they are here
 
         if labels is not None:
-            loss = self.loss(logits, labels, self.inverse_normed_freqs) 
+            if self.loss_name == "focal3":
+                loss = self.loss(logits, labels, self.normed_freqs) # normed freqs are weights_0
+            else:
+                loss = self.loss(logits, labels, self.inverse_normed_freqs) 
+#             loss_fct = nn.BCEWithLogitsLoss()
+#             loss = loss_fct(logits.view(-1, self.num_labels), labels.view(-1, self.num_labels).float())
             outputs = (loss,) + outputs
         return outputs  # (loss), logits, (hidden_states), (attentions)
 
@@ -205,6 +224,22 @@ class MultiLabelTextProcessor(DataProcessor):
         inverse_normed_freqs = [i/total_inverse_freqs for i in inverse_freqs]
         return torch.FloatTensor(inverse_normed_freqs)
     
+    # get the normed frequencies of the training set which will serve as weights_0 for focal3
+    def get_normed_freqs(self, data_dir):
+        lines = self._read_tsv(os.path.join(data_dir, "train.tsv"))
+        freqs = [0] * 9
+        for k,line in enumerate(lines):
+            labels = line[3:]
+            for (i,label) in enumerate(labels):
+                if float(label):
+                    freqs[i] = freqs[i]+1
+        total_labels = (k+1) * (i+1) #train size * 9
+#         print("total_labels ",total_labels)
+#         print("freqs ", freqs)
+        normed_freqs = [f/total_labels for f in freqs]
+#         print("normed_freqs ",normed_freqs)
+        return torch.FloatTensor(normed_freqs)
+    
 
 
     def _create_examples(self, lines, set_type):
@@ -212,6 +247,7 @@ class MultiLabelTextProcessor(DataProcessor):
         examples = []
         for (i, line) in enumerate(lines):
             guid = "%s-%s" % (set_type, i)
+#             logger.info("i:%d, %s" % (i,line))
             text_a = line[1]
             labels = line[3:]
             examples.append(
@@ -293,7 +329,7 @@ def convert_examples_to_features(examples, tokenizer,
 #         labels_ids = []
 #         for label in example.labels:
 #             labels_ids.append(float(label))
-            
+#         logger.info("LABELS: %s" % (example.labels))    
         labels = [float(i) for i in example.labels]
 
         if ex_index < 5:
@@ -512,7 +548,7 @@ def evaluate(args, model, tokenizer, prefix=""):
 #         elif args.output_mode == "regression":
 #             preds = np.squeeze(preds)
 
-        if args.loss == "focal":
+        if args.loss in ["focal","focal2","focal3","bce"]:
             preds = expit(preds)
         else:
             preds = softmax(preds, axis=1)
@@ -621,8 +657,8 @@ def main():
                         help="Rul evaluation during training at each logging step.")
     parser.add_argument("--do_lower_case", action='store_true',
                         help="Set this flag if you are using an uncased model.")
-    parser.add_argument("--set_inverse_normed_freqs", action='store_true',
-                        help="Whether to set inverse normed freqs of training set for weighted loss.")
+    parser.add_argument("--set_weights", action='store_true',
+                        help="Set appropriate weights for weighted loss based on the loss.")
     parser.add_argument("--zero_shot", action='store_true',
                         help="If zero-shot, model is loaded from model_name_or_path for evaluation.")
 
@@ -671,6 +707,8 @@ def main():
                         help="For distributed training: local_rank")
     parser.add_argument('--server_ip', type=str, default='', help="For distant debugging.")
     parser.add_argument('--server_port', type=str, default='', help="For distant debugging.")
+    parser.add_argument("--eval_specific_checkpoint", default="", type=str,
+                        help="Evaluate the specified checkpoint under model path.")
     
     args = parser.parse_args()
     print(args)
@@ -740,9 +778,15 @@ def main():
 
     logger.info("Training/evaluation parameters %s", args)
     
-    # Set inverse normed freqs if needed for weighted loss
-    inverse_normed_freqs = processor.get_inverse_normed_freqs(args.data_dir) if args.set_inverse_normed_freqs else torch.ones(num_labels)
-    model.set_inverse_normed_freqs(args, inverse_normed_freqs)
+    
+    
+    if args.loss == "focal3":
+        normed_freqs = processor.get_normed_freqs(args.data_dir) if args.set_weights else torch.ones(num_labels)
+        model.set_normed_freqs(args, normed_freqs)
+    else:
+        # Set inverse normed freqs if needed for weighted loss
+        inverse_normed_freqs = processor.get_inverse_normed_freqs(args.data_dir) if args.set_weights else torch.ones(num_labels)
+        model.set_inverse_normed_freqs(args, inverse_normed_freqs)
 
     model.to(args.device)
     # Training
@@ -786,12 +830,16 @@ def main():
         if args.eval_all_checkpoints:
             checkpoints = list(os.path.dirname(c) for c in sorted(glob.glob(model_directory + '/**/' + WEIGHTS_NAME, recursive=True)))
             logging.getLogger("transformers.modeling_utils").setLevel(logging.WARN)  # Reduce logging
+        
+        if args.eval_specific_checkpoint:
+            checkpoints = [os.path.join(model_directory, args.eval_specific_checkpoint)] + checkpoints
         logger.info("Evaluate the following checkpoints: %s", checkpoints)
         for checkpoint in checkpoints:
             global_step = checkpoint.split('-')[-1] if len(checkpoints) > 1 else ""
             model = model_class.from_pretrained(checkpoint)
             model.set_loss(args.loss)
             model.set_inverse_normed_freqs(args, torch.ones(num_labels))
+            model.set_normed_freqs(args, torch.ones(num_labels)) #you could rather set a default for loss
             model.to(args.device)
             result = evaluate(args, model, tokenizer, prefix=global_step)
             
@@ -800,8 +848,9 @@ def main():
             with open(filename, "wb") as f:
                 pickle.dump(result, f)
                 f.close()
-#             return(result) # assuming we're only evaluating a single checkpoint
-
+            # assuming we're only evaluating a single checkpoint
+            print("Saved ", os.path.join(args.output_dir, "predictions.pkl"))
+            return(result)
 
 if __name__ == "__main__":
     main()
