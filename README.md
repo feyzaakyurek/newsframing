@@ -13,15 +13,15 @@ News framing refers to the strategy in which aspects of certain issues are highl
 
 ### Requirements
 
-* python3 3.7.3   
-* pytorch/1.1
+* python 3.7.3   
+* pytorch 1.1
 * cuda 10.1
 * transformers 2.1.1
 
 
 ### Setup
 
-1. Go to `run_public.sh` and update `OUTPUT_GLOBAL_DIR`, `DATA_GLOBAL_DIR`, `CACHE_GLOBAL_DIR` and optionally `BASELINE_DATA_GLOBAL_DIR`.
+1. Go to `run_public.sh` and update `OUTPUT_GLOBAL_DIR`, `DATA_GLOBAL_DIR`, `CACHE_GLOBAL_DIR` and optionally `BASELINE_DATA_GLOBAL_DIR` if running Table 1 Experiments 3 and 4.
 2. For training and evaluation run
 
 ```
