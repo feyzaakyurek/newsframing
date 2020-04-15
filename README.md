@@ -19,7 +19,7 @@ News framing refers to the strategy in which aspects of certain issues are highl
 * transformers 2.1.1
 
 
-### Setup
+### Running Experiments
 
 1. Go to `run_public.sh` and update `OUTPUT_GLOBAL_DIR`, `DATA_GLOBAL_DIR`, `CACHE_GLOBAL_DIR` and optionally `BASELINE_DATA_GLOBAL_DIR` if running Table 1 Experiments 3 and 4.
 2. For training and evaluation run
