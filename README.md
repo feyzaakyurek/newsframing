@@ -47,4 +47,4 @@ replacing `EXP_NAME` with the name of the experiment you'd like to run. See the 
 | | Multi-label Multi-BERT Code-Switched Train EN Test TR|Table2Exp2TR |
 |...|
 
-Please the `run_public.sh` for a full list of experiments. The variable `EXP_NAME` is generally intuitive.
+Please see `run_public.sh` for a full list of experiments. The variable `EXP_NAME` is generally intuitive.
