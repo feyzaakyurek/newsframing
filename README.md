@@ -48,3 +48,7 @@ replacing `EXP_NAME` with the name of the experiment you'd like to run. See the 
 |...|
 
 Please see `run_public.sh` for a full list of experiments. The variable `EXP_NAME` is generally intuitive.
+
+### Questions?
+
+Please feel free to reach me at akyurek AT bu DOT edu
