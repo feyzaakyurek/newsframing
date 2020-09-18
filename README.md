@@ -2,7 +2,7 @@
 
 Code repository for the below paper.
 
-Afra Feyza Akyürek, Lei Guo, Randa Elanwar, Margrit Betke, Prakash Ishwar and Derry T. Wijaya. Multi-label and Multilingual News Framing Analysis. In Proceedings of ACL 2020.
+Afra Feyza Akyürek, Lei Guo, Randa Elanwar, Margrit Betke, Prakash Ishwar and Derry T. Wijaya. [Multi-label and Multilingual News Framing Analysis](https://www.aclweb.org/anthology/2020.acl-main.763/). In Proceedings of ACL 2020.
 
 ## Abstract
 
